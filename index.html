@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MiniChat</title>
+  <style>
+    :root{
+      --bg:#0f172a;        /* slate-900 */
+      --card:#111827;      /* gray-900  */
+      --ink:#e5e7eb;       /* gray-200 */
+      --muted:#94a3b8;     /* slate-400 */
+      --brand:#22c55e;     /* green-500 */
+      --brand-ink:#052e16; /* green-950 */
+      --me:#2563eb;        /* blue-600  */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font:16px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,Apple Color Emoji,Segoe UI Emoji;
+      background:linear-gradient(180deg, #0b1220, #0f172a);
+      color:var(--ink);
+      display:flex;align-items:center;justify-content:center;
+    }
+    .app{width:min(920px,95vw);height:min(720px,92vh);background:var(--card);border:1px solid #1f2937;border-radius:18px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+    header{display:flex; align-items:center; gap:.75rem; padding:12px 14px; border-bottom:1px solid #1f2937; background:rgba(255,255,255,.02)}
+    header h1{font-size:16px; margin:0; letter-spacing:.3px}
+    .pill{margin-left:auto; display:inline-flex; align-items:center; gap:.5rem; background:#0b1220; border:1px solid #223049; padding:6px 10px; border-radius:999px; color:var(--muted)}
+    .pill button{all:unset; cursor:pointer; font-size:12px; padding:4px 8px; background:var(--brand); color:#eafff2; border-radius:10px; font-weight:700}
+
+    #roomBar{padding:8px 14px; font-size:12px; color:var(--muted); border-bottom:1px dashed #1f2937}
+    #roomBar code{background:#0b1220; padding:2px 6px; border-radius:8px; color:#bbf7d0}
+
+    #messages{flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth}
+    .msg{display:flex; gap:10px; align-items:flex-end; max-width:86%}
+    .msg.me{margin-left:auto; flex-direction:row-reverse}
+    .bubble{padding:10px 12px; background:#0b1220; border:1px solid #223049; border-radius:14px; white-space:pre-wrap; word-break:break-word}
+    .msg.me .bubble{background:var(--me); border-color:#1e40af; color:white}
+    .meta{font-size:11px; color:var(--muted); margin:0 2px}
+    .msg.me .meta{text-align:right}
+    .avatar{width:30px;height:30px;border-radius:50%; background:#0b1220; border:1px solid #223049; display:grid; place-items:center; font-weight:700; color:#d1fae5}
+    .msg.me .avatar{background:#dbeafe; color:#1e3a8a; border-color:#93c5fd}
+
+    form{display:flex; gap:10px; padding:12px; border-top:1px solid #1f2937; background:rgba(255,255,255,.03)}
+    input[type=text]{flex:1; padding:14px 12px; border-radius:12px; background:#0b1220; color:var(--ink); border:1px solid #223049}
+    input[type=text]::placeholder{color:#6b7280}
+    button.send{padding:12px 16px; border-radius:12px; background:var(--brand); color:#eafff2; border:0; font-weight:800; cursor:pointer}
+    button.send:disabled{opacity:.5; cursor:not-allowed}
+
+    .foot{padding:8px 14px; font-size:11px; color:#6b7280; text-align:center}
+    .badge{display:inline-block; margin-left:6px; padding:2px 6px; border-radius:999px; border:1px solid #223049; background:#0b1220; color:#9ca3af}
+    .hint{color:#93c5fd}
+
+    .toast{position:fixed; inset:auto 16px 16px auto; background:#111827; border:1px solid #374151; color:#e5e7eb; padding:10px 12px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.35); font-size:13px; display:none}
+    details.setup{max-width:920px; margin:14px auto 0; color:#cbd5e1}
+    details.setup summary{cursor:pointer}
+    pre.sql{white-space:pre-wrap; word-break:break-word; background:#0b1220; border:1px solid #223049; padding:10px; border-radius:12px; color:#d1fae5}
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <header>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 8h12M6 12h12M6 16h8" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/></svg>
+      <h1>MiniChat <span class="badge" title="Just drop this file into GitHub Pages">static</span></h1>
+      <div class="pill" id="userPill">
+        <span id="userLabel">—</span>
+        <button id="editName" title="Change username">Edit</button>
+      </div>
+    </header>
+    <div id="roomBar">Room: <code id="roomName">general</code> <span class="hint">(add <code>?room=anything</code> to URL to switch)</span></div>
+
+    <main id="messages" aria-live="polite" aria-busy="true"></main>
+
+    <form id="form" autocomplete="off">
+      <input id="input" type="text" placeholder="Type a message… (Enter to send)" maxlength="2000" required />
+      <button class="send" id="sendBtn" type="submit">Send</button>
+    </form>
+
+    <div class="foot">Powered by Supabase. Replace the <span class="hint">SUPABASE_URL</span> and <span class="hint">SUPABASE_ANON_KEY</span> below, then push to GitHub Pages.</div>
+  </div>
+  <div class="toast" id="toast">Saved your new name.</div>
+
+  <details class="setup">
+    <summary>⚙️ Supabase quick setup (click to expand)</summary>
+    <ol>
+      <li>Create a project at <em>app.supabase.com</em>. Copy your <strong>Project URL</strong> and <strong>anon public key</strong>.</li>
+      <li>Run this SQL in the SQL editor, then enable Realtime for the table in <em>Database → Replication</em> (or run the <code>alter publication</code> line):</li>
+    </ol>
+    <pre class="sql">-- Table
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  room text not null,
+  uid text not null,
+  username text not null,
+  text text not null check (char_length(text) <= 2000),
+  created_at timestamptz not null default now()
+);
+
+-- Row Level Security + simple open policies (good for a quick demo)
+alter table public.messages enable row level security;
+create policy "Read all" on public.messages for select using (true);
+create policy "Insert all" on public.messages for insert with check (true);
+
+-- Realtime (toggle in UI or run this):
+alter publication supabase_realtime add table public.messages; </pre>
+  </details>
+
+  <!-- Supabase + App Logic -->
+  <script type="module">
+    // 1) Fill in from your Supabase project settings
+    const SUPABASE_URL = "https://hlamttqxuifqlnfamkvw.supabase.co"; // e.g. https://abcd.supabase.co
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsYW10dHF4dWlmcWxuZmFta3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDE2ODEsImV4cCI6MjA3MDcxNzY4MX0.4pLNZkGDYVjRBNudJ0OtszQC9fdvcHD1kgHB8W0bNJg";
+
+    // Import client (ESM) from CDN; works on GitHub Pages
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false }
+    });
+
+    // ---- App State ----
+    const params = new URLSearchParams(location.search);
+    const room = (params.get('room') || 'general').trim().slice(0, 64).toLowerCase();
+    document.getElementById('roomName').textContent = room || 'general';
+
+    const els = {
+      messages: document.getElementById('messages'),
+      input:    document.getElementById('input'),
+      form:     document.getElementById('form'),
+      sendBtn:  document.getElementById('sendBtn'),
+      userLbl:  document.getElementById('userLabel'),
+      editName: document.getElementById('editName'),
+      toast:    document.getElementById('toast')
+    };
+
+    // Generate a simple persistent user id and name in localStorage
+    const uidKey = 'minichat_uid';
+    const nameKey = 'minichat_name';
+    function nanoId(){return crypto.getRandomValues(new Uint8Array(8)).reduce((a,b)=>a+('0'+b.toString(16)).slice(-2),'')}
+    let uid = localStorage.getItem(uidKey) || (()=>{const v=nanoId(); localStorage.setItem(uidKey,v); return v;})();
+    let name = (localStorage.getItem(nameKey) || '').trim();
+
+    async function askName(initial=false){
+      const prev = name || '';
+      const next = (prompt('Pick a username (2–24 chars):', prev) || '').trim();
+      if(next && next.length>=2 && next.length<=24){
+        name = next;
+        localStorage.setItem(nameKey, name);
+        els.userLbl.textContent = name;
+        if(!initial){ toast('Saved your new name.'); }
+      } else if(initial && !prev){
+        name = 'Guest-' + uid.slice(-4);
+        localStorage.setItem(nameKey, name);
+        els.userLbl.textContent = name;
+      }
+    }
+
+    function toast(msg){ els.toast.textContent = msg; els.toast.style.display='block'; clearTimeout(window.__toast); window.__toast=setTimeout(()=>els.toast.style.display='none', 1800); }
+
+    await askName(true);
+
+    els.editName.addEventListener('click', ()=>askName(false));
+    els.userLbl.textContent = name;
+
+    // ---- Initial load ----
+    async function loadInitial(){
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id, text, username, uid, created_at')
+        .eq('room', room)
+        .order('created_at', { ascending: true })
+        .limit(500);
+      if(error){ alert('Load failed: '+ error.message); return; }
+      els.messages.innerHTML = '';
+      for(const m of (data || [])){
+        appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
+      }
+      els.messages.scrollTop = els.messages.scrollHeight + 9999;
+      els.messages.setAttribute('aria-busy','false');
+    }
+
+    await loadInitial();
+
+    // ---- Realtime subscription for new messages ----
+    const channel = supabase
+      .channel('room_'+room)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `room=eq.${room}`
+      }, (payload) => {
+        const m = payload.new;
+        appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
+        els.messages.scrollTop = els.messages.scrollHeight + 9999;
+      })
+      .subscribe();
+
+    // Render a single message
+    function appendMessage({id, text, username, uid:author, at}){
+      const mine = author === uid;
+      const wrap = document.createElement('div');
+      wrap.className = 'msg' + (mine ? ' me' : '');
+
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.textContent = (username||'?').slice(0,2).toUpperCase();
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text; // safe from XSS
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = `${username || 'unknown'} • ${fmtTime(at)}`;
+
+      wrap.appendChild(avatar);
+      const stack = document.createElement('div');
+      stack.style.maxWidth = '100%';
+      stack.appendChild(bubble);
+      stack.appendChild(meta);
+      wrap.appendChild(stack);
+
+      els.messages.appendChild(wrap);
+    }
+
+    function fmtTime(d){
+      try{
+        return new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(d);
+      }catch{ return '' }
+    }
+
+    // Send message
+    els.form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const text = (els.input.value || '').trim();
+      if(!text) return;
+      els.sendBtn.disabled = true;
+      try{
+        const { error } = await supabase.from('messages').insert({
+          text,
+          username: name || ('Guest-' + uid.slice(-4)),
+          uid,
+          room
+        });
+        if(error) throw error;
+        els.input.value = '';
+        els.messages.scrollTop = els.messages.scrollHeight + 9999;
+      } catch(err){
+        alert('Send failed: '+ err.message);
+      } finally {
+        els.sendBtn.disabled = false;
+      }
+    });
+
+    // Keyboard UX: Enter to send, Shift+Enter for newline
+    els.input.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); els.form.requestSubmit(); }
+    });
+
+    // Clean up when leaving
+    addEventListener('beforeunload', ()=>{ try{ supabase.removeChannel(channel); }catch{} });
+
+    // Small nicety: on tab focus, auto scroll to bottom
+    addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='visible'){
+        els.messages.scrollTop = els.messages.scrollHeight + 9999;
+      }
+    });
+  </script>
+</body>
+</html>
