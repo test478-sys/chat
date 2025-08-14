@@ -9,7 +9,7 @@
     *{box-sizing:border-box}
     html,body{height:100%}
     body{ margin:0; font:16px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:linear-gradient(180deg,#0b1220,#0f172a); color:var(--ink); display:flex; align-items:center; justify-content:center; }
-    .app{ width:min(920px,95vw); height:min(720px,92vh); background:var(--card); border:1px solid #1f2937; border-radius:18px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.35) }
+    .app{ position:relative; width:min(920px,95vw); height:min(720px,92vh); background:var(--card); border:1px solid #1f2937; border-radius:18px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.35) }
     header{ display:flex; align-items:center; gap:.75rem; padding:12px 14px; border-bottom:1px solid #1f2937; background:rgba(255,255,255,.02) }
     header h1{ font-size:16px; margin:0 }
     .row{ margin-left:auto; display:flex; align-items:center; gap:.5rem }
@@ -46,6 +46,16 @@
 
     .foot{ padding:8px 14px; font-size:11px; color:#6b7280; text-align:center }
     .toast{ position:fixed; bottom:16px; right:16px; background:#111827; border:1px solid #374151; color:#e5e7eb; padding:10px 12px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.35); font-size:13px; display:none }
+
+    /* Online panel */
+    #onlineBtn{ cursor:pointer }
+    #onlinePanel{ position:absolute; right:12px; top:56px; width:220px; max-height:50vh; overflow:auto; background:#0b1220; border:1px solid #223049; border-radius:12px; padding:8px; display:none; box-shadow:0 14px 40px rgba(0,0,0,.4) }
+    #onlinePanel h3{ margin:6px 6px 8px; font-size:12px; color:#9ca3af; font-weight:600 }
+    #onlineList{ list-style:none; margin:0; padding:0 }
+    #onlineList li{ display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; color:#e5e7eb }
+    #onlineList li:hover{ background:#0f172a }
+    .dot{ width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.15) }
+    .meTag{ margin-left:auto; font-size:10px; color:#93c5fd }
   </style>
 </head>
 <body>
@@ -53,6 +63,10 @@
     <header>
       <h1>Whatsapp (Raymond Edition)</h1>
       <div class="row">
+        <div id="onlineBtn" class="pill" title="Who's online">
+          <span>🟢 Online</span>
+          <strong id="onlineCount">0</strong>
+        </div>
         <label class="switch" title="Desktop notifications">
           <input type="checkbox" id="notifyChk" />
           <span>🔔 <span id="notifyText" class="off">Off</span></span>
@@ -64,6 +78,11 @@
       </div>
     </header>
     <div id="roomBar">Room: <code id="roomName">general</code></div>
+
+    <div id="onlinePanel" role="dialog" aria-modal="false">
+      <h3>Online now</h3>
+      <ul id="onlineList"></ul>
+    </div>
 
     <main id="messages" aria-live="polite" aria-busy="true"></main>
 
@@ -98,7 +117,11 @@
       editName: document.getElementById('editName'),
       toast:    document.getElementById('toast'),
       notifyChk: document.getElementById('notifyChk'),
-      notifyText: document.getElementById('notifyText')
+      notifyText: document.getElementById('notifyText'),
+      onlineBtn: document.getElementById('onlineBtn'),
+      onlinePanel: document.getElementById('onlinePanel'),
+      onlineList: document.getElementById('onlineList'),
+      onlineCount: document.getElementById('onlineCount')
     };
 
     // IDs & username
@@ -114,7 +137,7 @@
       const prev = name || '';
       const next = (prompt('Pick a username (2–24 chars):', prev) || '').trim();
       if(next && next.length>=2 && next.length<=24){
-        name = next; localStorage.setItem(nameKey, name); els.userLbl.textContent = name; if(!initial){ toast('Saved your new name.'); }
+        name = next; localStorage.setItem(nameKey, name); els.userLbl.textContent = name; if(!initial){ toast('Saved your new name.'); trackPresence(); }
       } else if(initial && !prev){
         name = 'Guest-' + uid.slice(-4); localStorage.setItem(nameKey, name); els.userLbl.textContent = name;
       }
@@ -136,9 +159,7 @@
       els.notifyText.className = els.notifyChk.checked ? 'state' : 'off';
       if(!supportsNotif){ els.notifyText.textContent = 'N/A'; }
     }
-
     syncNotifyUI();
-
     els.notifyChk.addEventListener('change', async () => {
       if(els.notifyChk.checked){
         if(!supportsNotif){ alert('Your browser does not support Notifications.'); syncNotifyUI(); return; }
@@ -159,6 +180,54 @@
         toast('Notifications off');
       }
     });
+
+    // ---- ONLINE PRESENCE (Realtime Presence) ----
+    const presence = supabase.channel('presence:'+room, { config: { presence: { key: uid } } });
+
+    function renderPresence(){
+      const state = presence.presenceState();
+      // state: { [uid]: [ { uid, username, room, online_at, ... } ] }
+      const users = Object.entries(state).map(([key, metas]) => metas[0]).filter(Boolean);
+      // sort: me first, then name
+      users.sort((a,b)=> (a.uid===uid?-1:b.uid===uid?1: (a.username||'').localeCompare(b.username||'')));
+      els.onlineCount.textContent = users.length;
+      els.onlineList.innerHTML = users.map(u => `
+        <li><span class="dot"></span><span>${escapeHtml(u.username||'unknown')}</span>${u.uid===uid?'<span class="meTag">you</span>':''}</li>
+      `).join('');
+    }
+
+    function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+    async function trackPresence(){
+      try{
+        await presence.track({ uid, username: name || ('Guest-'+uid.slice(-4)), room, online_at: new Date().toISOString() });
+      }catch{}
+    }
+
+    presence.on('presence', { event: 'sync'  }, renderPresence)
+            .on('presence', { event: 'join'  }, renderPresence)
+            .on('presence', { event: 'leave' }, renderPresence);
+
+    await presence.subscribe(async (status) => {
+      if(status === 'SUBSCRIBED') trackPresence();
+    });
+
+    // Toggle online panel
+    els.onlineBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const on = els.onlinePanel.style.display === 'block';
+      els.onlinePanel.style.display = on ? 'none' : 'block';
+      if(!on) renderPresence();
+    });
+    document.addEventListener('click', (e)=>{
+      if(!els.onlinePanel.contains(e.target) && e.target !== els.onlineBtn){ els.onlinePanel.style.display='none'; }
+    });
+
+    // Update presence when name changes
+    window.addEventListener('storage', (e)=>{ if(e.key===nameKey){ name = e.newValue; trackPresence(); } });
+
+    // Heartbeat update periodically
+    setInterval(()=>{ trackPresence(); }, 30_000);
 
     // ---- Initial load ----
     async function loadInitial(){
@@ -181,7 +250,7 @@
 
     // ---- Realtime subscription for new messages ----
     const channel = supabase
-      .channel('room_'+room)
+      .channel('room:'+room)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room=eq.${room}` }, (payload) => {
         const m = payload.new;
         appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
@@ -230,7 +299,7 @@
     els.input.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); els.form.requestSubmit(); } });
 
     // Clean up when leaving
-    addEventListener('beforeunload', ()=>{ try{ supabase.removeChannel(channel); }catch{} });
+    addEventListener('beforeunload', ()=>{ try{ supabase.removeChannel(channel); supabase.removeChannel(presence); }catch{} });
 
     // Auto-scroll on focus
     addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ els.messages.scrollTop = els.messages.scrollHeight + 9999; } });
