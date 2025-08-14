@@ -81,13 +81,16 @@
   </div>
   <div class="toast" id="toast">Saved your new name.</div>
 
-  <details class="setup">
+  <details class="setup" open>
     <summary>⚙️ Supabase quick setup (click to expand)</summary>
     <ol>
       <li>Create a project at <em>app.supabase.com</em>. Copy your <strong>Project URL</strong> and <strong>anon public key</strong>.</li>
-      <li>Run this SQL in the SQL editor, then enable Realtime for the table in <em>Database → Replication</em> (or run the <code>alter publication</code> line):</li>
+      <li>Run this SQL in the SQL editor. It is <strong>idempotent</strong> (safe to re-run) and avoids duplicate publication errors:</li>
     </ol>
-    <pre class="sql">-- Table
+    <pre class="sql">-- === MiniChat schema & realtime (safe to re-run) ===
+
+-- 1) Table
+create extension if not exists pgcrypto; -- for gen_random_uuid() on some stacks
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   room text not null,
@@ -97,20 +100,39 @@ create table if not exists public.messages (
   created_at timestamptz not null default now()
 );
 
--- Row Level Security + simple open policies (good for a quick demo)
+-- 2) RLS + open demo policies (reads for all, inserts for all)
 alter table public.messages enable row level security;
-create policy "Read all" on public.messages for select using (true);
-create policy "Insert all" on public.messages for insert with check (true);
 
--- Realtime (toggle in UI or run this):
-alter publication supabase_realtime add table public.messages; </pre>
+do $$
+begin
+  if not exists (select 1 from pg_policies where policyname = 'Read all' and tablename = 'messages') then
+    create policy "Read all" on public.messages for select using (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Insert all' and tablename = 'messages') then
+    create policy "Insert all" on public.messages for insert with check (true);
+  end if;
+end$$;
+
+-- 3) Realtime: ensure publication exists and include this table only if not already included
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    execute 'create publication supabase_realtime for table public.messages';
+  elsif not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'
+  ) then
+    execute 'alter publication supabase_realtime add table public.messages';
+  end if;
+end$$;
+</pre>
   </details>
 
   <!-- Supabase + App Logic -->
   <script type="module">
     // 1) Fill in from your Supabase project settings
-    const SUPABASE_URL = "https://hlamttqxuifqlnfamkvw.supabase.co"; // e.g. https://abcd.supabase.co
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsYW10dHF4dWlmcWxuZmFta3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDE2ODEsImV4cCI6MjA3MDcxNzY4MX0.4pLNZkGDYVjRBNudJ0OtszQC9fdvcHD1kgHB8W0bNJg";
+    const SUPABASE_URL = "https://hlamttqxuifqlnfamkvw.supabase.co"; // from your project
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsYW10dHF4dWlmcWxuZmFta3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDE2ODEsImV4cCI6MjA3MDcxNzY4MX0.4pLNZkGDYVjRBNudJ0OtszQC9fdvcHD1kgHB8W0bNJg"; // your anon key
 
     // Import client (ESM) from CDN; works on GitHub Pages
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
