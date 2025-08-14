@@ -3,82 +3,113 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MiniChat</title>
+  <title>Whatsapp (Raymond Edition)</title>
   <style>
-    :root{
-      --bg:#0f172a;
-      --card:#111827;
-      --ink:#e5e7eb;
-      --muted:#94a3b8;
-      --brand:#22c55e;
-      --me:#2563eb;
-    }
+    :root{ --bg:#0f172a; --card:#111827; --ink:#e5e7eb; --muted:#94a3b8; --brand:#22c55e; --me:#2563eb; }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{
-      margin:0;
-      font:16px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-      background:linear-gradient(180deg, #0b1220, #0f172a);
-      color:var(--ink);
-      display:flex;align-items:center;justify-content:center;
-    }
-    .app{width:min(920px,95vw);height:min(720px,92vh);background:var(--card);border:1px solid #1f2937;border-radius:18px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-    header{display:flex; align-items:center; gap:.75rem; padding:12px 14px; border-bottom:1px solid #1f2937; background:rgba(255,255,255,.02)}
-    header h1{font-size:16px; margin:0}
-    .pill{margin-left:auto; display:inline-flex; align-items:center; gap:.5rem; background:#0b1220; border:1px solid #223049; padding:6px 10px; border-radius:999px; color:var(--muted)}
-    .pill button{all:unset; cursor:pointer; font-size:12px; padding:4px 8px; background:var(--brand); color:#fff; border-radius:10px; font-weight:700}
-    #roomBar{padding:8px 14px; font-size:12px; color:var(--muted); border-bottom:1px dashed #1f2937}
-    #roomBar code{background:#0b1220; padding:2px 6px; border-radius:8px; color:#bbf7d0}
-    #messages{flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth}
-    .msg{display:flex; gap:10px; align-items:flex-end; max-width:86%}
-    .msg.me{margin-left:auto; flex-direction:row-reverse}
-    .bubble{padding:10px 12px; background:#0b1220; border:1px solid #223049; border-radius:14px; white-space:pre-wrap; word-break:break-word}
-    .msg.me .bubble{background:var(--me); border-color:#1e40af; color:white}
-    .meta{font-size:11px; color:var(--muted)}
-    .msg.me .meta{text-align:right}
-    .avatar{width:30px;height:30px;border-radius:50%; background:#0b1220; border:1px solid #223049; display:grid; place-items:center; font-weight:700; color:#d1fae5}
-    .msg.me .avatar{background:#dbeafe; color:#1e3a8a; border-color:#93c5fd}
-    form{display:flex; gap:10px; padding:12px; border-top:1px solid #1f2937; background:rgba(255,255,255,.03)}
-    input[type=text]{flex:1; padding:14px 12px; border-radius:12px; background:#0b1220; color:var(--ink); border:1px solid #223049}
-    input[type=text]::placeholder{color:#6b7280}
-    button.send{padding:12px 16px; border-radius:12px; background:var(--brand); color:#fff; border:0; font-weight:800; cursor:pointer}
-    button.send:disabled{opacity:.5; cursor:not-allowed}
-    .foot{padding:8px 14px; font-size:11px; color:#6b7280; text-align:center}
-    .toast{position:fixed; bottom:16px; right:16px; background:#111827; border:1px solid #374151; color:#e5e7eb; padding:10px 12px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.35); font-size:13px; display:none}
+    body{ margin:0; font:16px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:linear-gradient(180deg,#0b1220,#0f172a); color:var(--ink); display:flex; align-items:center; justify-content:center; }
+    .app{ width:min(920px,95vw); height:min(720px,92vh); background:var(--card); border:1px solid #1f2937; border-radius:18px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.35) }
+    header{ display:flex; align-items:center; gap:.75rem; padding:12px 14px; border-bottom:1px solid #1f2937; background:rgba(255,255,255,.02) }
+    header h1{ font-size:16px; margin:0 }
+    .row{ margin-left:auto; display:flex; align-items:center; gap:.5rem }
+    .pill{ display:inline-flex; align-items:center; gap:.5rem; background:#0b1220; border:1px solid #223049; padding:6px 10px; border-radius:999px; color:var(--muted) }
+    .pill button{ all:unset; cursor:pointer; font-size:12px; padding:4px 8px; background:var(--brand); color:#fff; border-radius:10px; font-weight:700 }
+
+    /* Toggle switch */
+    .switch{ position:relative; display:inline-flex; align-items:center; gap:.5rem; user-select:none; font-size:12px; color:var(--muted); padding:4px 6px; border-radius:999px; border:1px solid #223049; background:#0b1220 }
+    .switch input{ appearance:none; width:36px; height:20px; background:#111827; border:1px solid #223049; border-radius:999px; position:relative; outline:none; cursor:pointer; transition:.2s }
+    .switch input:after{ content:""; position:absolute; top:1px; left:1px; width:16px; height:16px; background:#374151; border-radius:50%; transition:.2s }
+    .switch input:checked{ background:#16a34a; border-color:#15803d }
+    .switch input:checked:after{ left:18px; background:#ecfdf5 }
+    .switch .state{ font-weight:700; color:#bbf7d0 }
+    .switch .off{ color:#9ca3af }
+
+    #roomBar{ padding:8px 14px; font-size:12px; color:var(--muted); border-bottom:1px dashed #1f2937 }
+    #roomBar code{ background:#0b1220; padding:2px 6px; border-radius:8px; color:#bbf7d0 }
+
+    #messages{ flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth }
+    .msg{ display:flex; gap:10px; align-items:flex-end; max-width:86% }
+    .msg.me{ margin-left:auto; flex-direction:row-reverse }
+    .bubble{ padding:10px 12px; background:#0b1220; border:1px solid #223049; border-radius:14px; white-space:pre-wrap; word-break:break-word }
+    .msg.me .bubble{ background:var(--me); border-color:#1e40af; color:#fff }
+    .meta{ font-size:11px; color:var(--muted) }
+    .msg.me .meta{ text-align:right }
+    .avatar{ width:30px; height:30px; border-radius:50%; background:#0b1220; border:1px solid #223049; display:grid; place-items:center; font-weight:700; color:#d1fae5 }
+    .msg.me .avatar{ background:#dbeafe; color:#1e3a8a; border-color:#93c5fd }
+
+    form{ display:flex; gap:10px; padding:12px; border-top:1px solid #1f2937; background:rgba(255,255,255,.03) }
+    input[type=text]{ flex:1; padding:14px 12px; border-radius:12px; background:#0b1220; color:var(--ink); border:1px solid #223049 }
+    input[type=text]::placeholder{ color:#6b7280 }
+    button.send{ padding:12px 16px; border-radius:12px; background:var(--brand); color:#fff; border:0; font-weight:800; cursor:pointer }
+    button.send:disabled{ opacity:.5; cursor:not-allowed }
+
+    .foot{ padding:8px 14px; font-size:11px; color:#6b7280; text-align:center }
+    .toast{ position:fixed; bottom:16px; right:16px; background:#111827; border:1px solid #374151; color:#e5e7eb; padding:10px 12px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.35); font-size:13px; display:none }
   </style>
 </head>
 <body>
   <div class="app" id="app">
     <header>
-      <h1>MiniChat</h1>
-      <div class="pill" id="userPill">
-        <span id="userLabel">—</span>
-        <button id="editName">Edit</button>
+      <h1>Whatsapp (Raymond Edition)</h1>
+      <div class="row">
+        <label class="switch" title="Desktop notifications">
+          <input type="checkbox" id="notifyChk" />
+          <span>🔔 <span id="notifyText" class="off">Off</span></span>
+        </label>
+        <div class="pill" id="userPill">
+          <span id="userLabel">—</span>
+          <button id="editName">Edit</button>
+        </div>
       </div>
     </header>
     <div id="roomBar">Room: <code id="roomName">general</code></div>
+
     <main id="messages" aria-live="polite" aria-busy="true"></main>
+
     <form id="form" autocomplete="off">
       <input id="input" type="text" placeholder="Type a message… (Enter to send)" maxlength="2000" required />
       <button class="send" id="sendBtn" type="submit">Send</button>
     </form>
+
     <div class="foot">Powered by Supabase.</div>
   </div>
   <div class="toast" id="toast">Saved your new name.</div>
+
   <script type="module">
+    // --- Config ---
     const SUPABASE_URL = "https://hlamttqxuifqlnfamkvw.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsYW10dHF4dWlmcWxuZmFta3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDE2ODEsImV4cCI6MjA3MDcxNzY4MX0.4pLNZkGDYVjRBNudJ0OtszQC9fdvcHD1kgHB8W0bNJg";
+
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+
+    // ---- App State ----
     const params = new URLSearchParams(location.search);
     const room = (params.get('room') || 'general').trim().slice(0, 64).toLowerCase();
     document.getElementById('roomName').textContent = room || 'general';
-    const els = { messages: document.getElementById('messages'), input: document.getElementById('input'), form: document.getElementById('form'), sendBtn: document.getElementById('sendBtn'), userLbl: document.getElementById('userLabel'), editName: document.getElementById('editName'), toast: document.getElementById('toast') };
+
+    const els = {
+      messages: document.getElementById('messages'),
+      input:    document.getElementById('input'),
+      form:     document.getElementById('form'),
+      sendBtn:  document.getElementById('sendBtn'),
+      userLbl:  document.getElementById('userLabel'),
+      editName: document.getElementById('editName'),
+      toast:    document.getElementById('toast'),
+      notifyChk: document.getElementById('notifyChk'),
+      notifyText: document.getElementById('notifyText')
+    };
+
+    // IDs & username
     const uidKey = 'minichat_uid';
     const nameKey = 'minichat_name';
+    const notifyKey = 'minichat_notify';
+
     function nanoId(){return crypto.getRandomValues(new Uint8Array(8)).reduce((a,b)=>a+('0'+b.toString(16)).slice(-2),'')}
     let uid = localStorage.getItem(uidKey) || (()=>{const v=nanoId(); localStorage.setItem(uidKey,v); return v;})();
     let name = (localStorage.getItem(nameKey) || '').trim();
+
     async function askName(initial=false){
       const prev = name || '';
       const next = (prompt('Pick a username (2–24 chars):', prev) || '').trim();
@@ -88,30 +119,99 @@
         name = 'Guest-' + uid.slice(-4); localStorage.setItem(nameKey, name); els.userLbl.textContent = name;
       }
     }
+
     function toast(msg){ els.toast.textContent = msg; els.toast.style.display='block'; clearTimeout(window.__toast); window.__toast=setTimeout(()=>els.toast.style.display='none', 1800); }
+
     await askName(true);
     els.editName.addEventListener('click', ()=>askName(false));
     els.userLbl.textContent = name;
+
+    // ---- Notifications (with toggle) ----
+    const supportsNotif = 'Notification' in window;
+    function syncNotifyUI(){
+      const on = localStorage.getItem(notifyKey) === 'on';
+      els.notifyChk.checked = on && Notification.permission === 'granted';
+      els.notifyChk.disabled = !supportsNotif || Notification.permission === 'denied';
+      els.notifyText.textContent = (els.notifyChk.checked ? 'On' : 'Off');
+      els.notifyText.className = els.notifyChk.checked ? 'state' : 'off';
+      if(!supportsNotif){ els.notifyText.textContent = 'N/A'; }
+    }
+
+    syncNotifyUI();
+
+    els.notifyChk.addEventListener('change', async () => {
+      if(els.notifyChk.checked){
+        if(!supportsNotif){ alert('Your browser does not support Notifications.'); syncNotifyUI(); return; }
+        if(Notification.permission === 'default'){
+          const res = await Notification.requestPermission();
+          if(res !== 'granted'){ els.notifyChk.checked = false; syncNotifyUI(); return; }
+        }
+        if(Notification.permission === 'denied'){
+          alert('Notifications are blocked in your browser settings.');
+          els.notifyChk.checked = false; syncNotifyUI(); return;
+        }
+        localStorage.setItem(notifyKey, 'on');
+        syncNotifyUI();
+        try{ const n = new Notification('Whatsapp (Raymond Edition) notifications on', { body: `Room #${room}` }); n.onclick = ()=>{ window.focus(); n.close(); }; }catch{}
+      } else {
+        localStorage.setItem(notifyKey, 'off');
+        syncNotifyUI();
+        toast('Notifications off');
+      }
+    });
+
+    // ---- Initial load ----
     async function loadInitial(){
-      const { data, error } = await supabase.from('messages').select('id, text, username, uid, created_at').eq('room', room).order('created_at', { ascending: true }).limit(500);
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id, text, username, uid, created_at')
+        .eq('room', room)
+        .order('created_at', { ascending: true })
+        .limit(500);
       if(error){ alert('Load failed: '+ error.message); return; }
       els.messages.innerHTML = '';
-      for(const m of (data || [])) appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
-      els.messages.scrollTop = els.messages.scrollHeight + 9999; els.messages.setAttribute('aria-busy','false');
+      for(const m of (data || [])){
+        appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
+      }
+      els.messages.scrollTop = els.messages.scrollHeight + 9999;
+      els.messages.setAttribute('aria-busy','false');
     }
+
     await loadInitial();
-    const channel = supabase.channel('room_'+room).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room=eq.${room}` }, (payload) => {
-      const m = payload.new; appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) }); els.messages.scrollTop = els.messages.scrollHeight + 9999;
-    }).subscribe();
+
+    // ---- Realtime subscription for new messages ----
+    const channel = supabase
+      .channel('room_'+room)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room=eq.${room}` }, (payload) => {
+        const m = payload.new;
+        appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
+        els.messages.scrollTop = els.messages.scrollHeight + 9999;
+
+        // Show notification if enabled, message is from others, and tab not focused/visible
+        if(localStorage.getItem(notifyKey)==='on' && supportsNotif && Notification.permission==='granted' && m.uid !== uid && (!document.hasFocus() || document.visibilityState==='hidden')){
+          try{
+            const n = new Notification(`${m.username} — #${room}`, { body: (m.text||'').slice(0,120), tag:`wre-${room}`, renotify:true });
+            n.onclick = ()=>{ window.focus(); n.close(); };
+          }catch{}
+        }
+      })
+      .subscribe();
+
+    // Render a single message
     function appendMessage({id, text, username, uid:author, at}){
-      const mine = author === uid; const wrap = document.createElement('div'); wrap.className = 'msg' + (mine ? ' me' : '');
+      const mine = author === uid;
+      const wrap = document.createElement('div');
+      wrap.className = 'msg' + (mine ? ' me' : '');
       const avatar = document.createElement('div'); avatar.className = 'avatar'; avatar.textContent = (username||'?').slice(0,2).toUpperCase();
       const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = text;
       const meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = `${username || 'unknown'} • ${fmtTime(at)}`;
       wrap.appendChild(avatar); const stack = document.createElement('div'); stack.style.maxWidth = '100%'; stack.appendChild(bubble); stack.appendChild(meta); wrap.appendChild(stack);
       els.messages.appendChild(wrap);
     }
+
     function fmtTime(d){ try{ return new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(d); }catch{ return '' } }
+
+    // Send message
     els.form.addEventListener('submit', async (e)=>{
       e.preventDefault();
       const text = (els.input.value || '').trim();
@@ -125,8 +225,14 @@
       } catch(err){ alert('Send failed: '+ err.message); }
       finally { els.sendBtn.disabled = false; }
     });
+
+    // Keyboard UX: Enter to send, Shift+Enter for newline
     els.input.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); els.form.requestSubmit(); } });
+
+    // Clean up when leaving
     addEventListener('beforeunload', ()=>{ try{ supabase.removeChannel(channel); }catch{} });
+
+    // Auto-scroll on focus
     addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ els.messages.scrollTop = els.messages.scrollHeight + 9999; } });
   </script>
 </body>
