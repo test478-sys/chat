@@ -31,12 +31,25 @@
     #messages{ flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth }
     .msg{ display:flex; gap:10px; align-items:flex-end; max-width:86% }
     .msg.me{ margin-left:auto; flex-direction:row-reverse }
-    .bubble{ padding:10px 12px; background:#0b1220; border:1px solid #223049; border-radius:14px; white-space:pre-wrap; word-break:break-word }
+    .bubble{ padding:10px 12px; background:#0b1220; border:1px solid #223049; border-radius:14px; white-space:pre-wrap; word-break:break-word; position:relative }
+    .bubble.deleted{ font-style:italic; opacity:.7 }
     .msg.me .bubble{ background:var(--me); border-color:#1e40af; color:#fff }
-    .meta{ font-size:11px; color:var(--muted) }
+    .meta{ font-size:11px; color:var(--muted); margin-top:4px }
     .msg.me .meta{ text-align:right }
     .avatar{ width:30px; height:30px; border-radius:50%; background:#0b1220; border:1px solid #223049; display:grid; place-items:center; font-weight:700; color:#d1fae5 }
     .msg.me .avatar{ background:#dbeafe; color:#1e3a8a; border-color:#93c5fd }
+
+    /* Per-message actions */
+    .actions{ display:flex; align-items:center; gap:6px; margin-top:2px }
+    .menuWrap{ position:relative; }
+    .menuBtn{ background:transparent; border:0; color:#9ca3af; cursor:pointer; padding:4px; border-radius:8px }
+    .menuBtn:hover{ background:#111827; color:#e5e7eb }
+    .menu{ position:absolute; right:0; bottom:26px; display:none; background:#0b1220; border:1px solid #223049; border-radius:10px; min-width:180px; box-shadow:0 14px 40px rgba(0,0,0,.4); z-index:10 }
+    .menu.open{ display:block }
+    .menu ul{ list-style:none; margin:0; padding:6px }
+    .menu li button{ all:unset; display:block; width:100%; text-align:left; padding:8px 10px; border-radius:8px; cursor:pointer; color:#e5e7eb; font-size:13px }
+    .menu li button:hover{ background:#111827 }
+    .sep{ height:1px; margin:6px 0; background:#1f2937 }
 
     form{ display:flex; gap:10px; padding:12px; border-top:1px solid #1f2937; background:rgba(255,255,255,.03) }
     input[type=text]{ flex:1; padding:14px 12px; border-radius:12px; background:#0b1220; color:var(--ink); border:1px solid #223049 }
@@ -46,6 +59,8 @@
 
     .foot{ padding:8px 14px; font-size:11px; color:#6b7280; text-align:center }
     .toast{ position:fixed; bottom:16px; right:16px; background:#111827; border:1px solid #374151; color:#e5e7eb; padding:10px 12px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.35); font-size:13px; display:none }
+    .toast .row{ display:flex; align-items:center; gap:10px }
+    .toast button{ all:unset; background:#2563eb; color:#fff; padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:700 }
 
     /* Online panel */
     #onlineBtn{ cursor:pointer }
@@ -93,7 +108,7 @@
 
     <div class="foot">Powered by Supabase.</div>
   </div>
-  <div class="toast" id="toast">Saved your new name.</div>
+  <div class="toast" id="toast"><span id="toastMsg">Saved your new name.</span> <button id="toastUndo" style="display:none">Undo</button></div>
 
   <script type="module">
     // --- Config ---
@@ -116,6 +131,8 @@
       userLbl:  document.getElementById('userLabel'),
       editName: document.getElementById('editName'),
       toast:    document.getElementById('toast'),
+      toastMsg: document.getElementById('toastMsg'),
+      toastUndo: document.getElementById('toastUndo'),
       notifyChk: document.getElementById('notifyChk'),
       notifyText: document.getElementById('notifyText'),
       onlineBtn: document.getElementById('onlineBtn'),
@@ -128,11 +145,12 @@
     const uidKey = 'minichat_uid';
     const nameKey = 'minichat_name';
     const notifyKey = 'minichat_notify';
+    const hiddenKey = `minichat_hidden_${room}`; // store message IDs hidden "for me" in this room
 
     function nanoId(){return crypto.getRandomValues(new Uint8Array(8)).reduce((a,b)=>a+('0'+b.toString(16)).slice(-2),'')}
     let uid = localStorage.getItem(uidKey) || (()=>{const v=nanoId(); localStorage.setItem(uidKey,v); return v;})();
-    let name = (localStorage.getItem(nameKey) || '').trim();
 
+    let name = (localStorage.getItem(nameKey) || '').trim();
     async function askName(initial=false){
       const prev = name || '';
       const next = (prompt('Pick a username (2–24 chars):', prev) || '').trim();
@@ -142,14 +160,36 @@
         name = 'Guest-' + uid.slice(-4); localStorage.setItem(nameKey, name); els.userLbl.textContent = name;
       }
     }
-
-    function toast(msg){ els.toast.textContent = msg; els.toast.style.display='block'; clearTimeout(window.__toast); window.__toast=setTimeout(()=>els.toast.style.display='none', 1800); }
-
     await askName(true);
     els.editName.addEventListener('click', ()=>askName(false));
     els.userLbl.textContent = name;
 
-    // ---- Notifications (with toggle) ----
+    // Hidden "for me" storage
+    const getHiddenSet = () => {
+      try { return new Set(JSON.parse(localStorage.getItem(hiddenKey)||'[]')); } catch { return new Set(); }
+    };
+    const addHidden = (id) => { const s=getHiddenSet(); s.add(id); localStorage.setItem(hiddenKey, JSON.stringify([...s])); };
+    const removeHidden = (id) => { const s=getHiddenSet(); s.delete(id); localStorage.setItem(hiddenKey, JSON.stringify([...s])); };
+
+    // Toast / Undo helper
+    let toastTimer = null, lastHiddenUndoId = null;
+    function toast(msg, {undoId=null, ttl=1800}={}){
+      els.toastMsg.textContent = msg;
+      els.toastUndo.style.display = undoId ? 'inline-block' : 'none';
+      els.toast.style.display='block';
+      lastHiddenUndoId = undoId;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(()=>{ els.toast.style.display='none'; els.toastUndo.style.display='none'; lastHiddenUndoId=null; }, ttl);
+    }
+    els.toastUndo.addEventListener('click', ()=>{
+      if(!lastHiddenUndoId) return;
+      removeHidden(lastHiddenUndoId);
+      const node = els.messages.querySelector(`.msg[data-id="${cssEscape(lastHiddenUndoId)}"]`);
+      if(node) node.style.display='';
+      els.toast.style.display='none'; els.toastUndo.style.display='none'; lastHiddenUndoId=null;
+    });
+
+    // Notifications (with toggle)
     const supportsNotif = 'Notification' in window;
     function syncNotifyUI(){
       const on = localStorage.getItem(notifyKey) === 'on';
@@ -181,36 +221,27 @@
       }
     });
 
-    // ---- ONLINE PRESENCE (Realtime Presence) ----
+    // ONLINE PRESENCE
     const presence = supabase.channel('presence:'+room, { config: { presence: { key: uid } } });
-
     function renderPresence(){
       const state = presence.presenceState();
-      // state: { [uid]: [ { uid, username, room, online_at, ... } ] }
-      const users = Object.entries(state).map(([key, metas]) => metas[0]).filter(Boolean);
-      // sort: me first, then name
+      const users = Object.entries(state).map(([_, metas]) => metas[0]).filter(Boolean);
       users.sort((a,b)=> (a.uid===uid?-1:b.uid===uid?1: (a.username||'').localeCompare(b.username||'')));
       els.onlineCount.textContent = users.length;
       els.onlineList.innerHTML = users.map(u => `
         <li><span class="dot"></span><span>${escapeHtml(u.username||'unknown')}</span>${u.uid===uid?'<span class="meTag">you</span>':''}</li>
       `).join('');
     }
-
     function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
-
     async function trackPresence(){
       try{
         await presence.track({ uid, username: name || ('Guest-'+uid.slice(-4)), room, online_at: new Date().toISOString() });
       }catch{}
     }
-
     presence.on('presence', { event: 'sync'  }, renderPresence)
             .on('presence', { event: 'join'  }, renderPresence)
             .on('presence', { event: 'leave' }, renderPresence);
-
-    await presence.subscribe(async (status) => {
-      if(status === 'SUBSCRIBED') trackPresence();
-    });
+    await presence.subscribe((status) => { if(status === 'SUBSCRIBED') trackPresence(); });
 
     // Toggle online panel
     els.onlineBtn.addEventListener('click', (e)=>{
@@ -222,14 +253,11 @@
     document.addEventListener('click', (e)=>{
       if(!els.onlinePanel.contains(e.target) && e.target !== els.onlineBtn){ els.onlinePanel.style.display='none'; }
     });
-
-    // Update presence when name changes
     window.addEventListener('storage', (e)=>{ if(e.key===nameKey){ name = e.newValue; trackPresence(); } });
-
-    // Heartbeat update periodically
     setInterval(()=>{ trackPresence(); }, 30_000);
 
     // ---- Initial load ----
+    const DELETED_SENTINEL = '🚫 This message was deleted';
     async function loadInitial(){
       const { data, error } = await supabase
         .from('messages')
@@ -245,40 +273,168 @@
       els.messages.scrollTop = els.messages.scrollHeight + 9999;
       els.messages.setAttribute('aria-busy','false');
     }
-
     await loadInitial();
 
-    // ---- Realtime subscription for new messages ----
+    // ---- Realtime: INSERT & UPDATE ----
     const channel = supabase
       .channel('room:'+room)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room=eq.${room}` }, (payload) => {
         const m = payload.new;
         appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
         els.messages.scrollTop = els.messages.scrollHeight + 9999;
-
-        // Show notification if enabled, message is from others, and tab not focused/visible
-        if(localStorage.getItem(notifyKey)==='on' && supportsNotif && Notification.permission==='granted' && m.uid !== uid && (!document.hasFocus() || document.visibilityState==='hidden')){
+        if(localStorage.getItem(notifyKey)==='on' && 'Notification' in window && Notification.permission==='granted' && m.uid !== uid && (!document.hasFocus() || document.visibilityState==='hidden')){
           try{
             const n = new Notification(`${m.username} — #${room}`, { body: (m.text||'').slice(0,120), tag:`wre-${room}`, renotify:true });
             n.onclick = ()=>{ window.focus(); n.close(); };
           }catch{}
         }
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `room=eq.${room}` }, (payload) => {
+        const m = payload.new;
+        updateMessageDom({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
+      })
       .subscribe();
 
-    // Render a single message
+    // ---- DOM helpers ----
     function appendMessage({id, text, username, uid:author, at}){
       const mine = author === uid;
+      const hidden = getHiddenSet().has(id);
       const wrap = document.createElement('div');
       wrap.className = 'msg' + (mine ? ' me' : '');
-      const avatar = document.createElement('div'); avatar.className = 'avatar'; avatar.textContent = (username||'?').slice(0,2).toUpperCase();
-      const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = text;
-      const meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = `${username || 'unknown'} • ${fmtTime(at)}`;
-      wrap.appendChild(avatar); const stack = document.createElement('div'); stack.style.maxWidth = '100%'; stack.appendChild(bubble); stack.appendChild(meta); wrap.appendChild(stack);
+      wrap.dataset.id = id;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.textContent = (username||'?').slice(0,2).toUpperCase();
+
+      const stack = document.createElement('div');
+      stack.style.maxWidth = '100%';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble' + (text === DELETED_SENTINEL ? ' deleted' : '');
+      bubble.textContent = text ?? '';
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = `${username || 'unknown'} • ${fmtTime(at)}`;
+
+      // Actions row (⋯ menu)
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const menuWrap = document.createElement('div');
+      menuWrap.className = 'menuWrap';
+
+      const btn = document.createElement('button');
+      btn.className = 'menuBtn';
+      btn.title = 'More';
+      btn.setAttribute('aria-haspopup', 'menu');
+      btn.textContent = '⋯';
+
+      const menu = document.createElement('div');
+      menu.className = 'menu';
+      const ul = document.createElement('ul');
+
+      // Delete for me (always)
+      const liHide = document.createElement('li');
+      const btnHide = document.createElement('button');
+      btnHide.textContent = 'Delete for me';
+      btnHide.addEventListener('click', ()=>{
+        menu.classList.remove('open');
+        addHidden(id);
+        wrap.style.display='none';
+        toast('Message hidden', { undoId: id, ttl: 4500 });
+      });
+      liHide.appendChild(btnHide);
+      ul.appendChild(liHide);
+
+      // Author-only actions
+      if(mine && text !== DELETED_SENTINEL){
+        const liEdit = document.createElement('li');
+        const btnEdit = document.createElement('button');
+        btnEdit.textContent = 'Edit message';
+        btnEdit.addEventListener('click', async ()=>{
+          menu.classList.remove('open');
+          const current = bubble.textContent || '';
+          const next = (prompt('Edit your message:', current) ?? '').trim();
+          if(!next || next === current) return;
+          try{
+            const { error } = await supabase.from('messages')
+              .update({ text: next })
+              .eq('id', id)
+              .eq('uid', uid);
+            if(error) throw error;
+          }catch(err){ alert('Edit failed: ' + err.message); }
+        });
+        liEdit.appendChild(btnEdit);
+        ul.appendChild(liEdit);
+
+        const sep = document.createElement('div'); sep.className = 'sep';
+        ul.appendChild(sep);
+
+        const liDelAll = document.createElement('li');
+        const btnDelAll = document.createElement('button');
+        btnDelAll.textContent = 'Delete for everyone';
+        btnDelAll.addEventListener('click', async ()=>{
+          menu.classList.remove('open');
+          if(!confirm('Delete this message for everyone?')) return;
+          try{
+            // No DB schema change required: replace with sentinel text
+            const { error } = await supabase.from('messages')
+              .update({ text: DELETED_SENTINEL })
+              .eq('id', id)
+              .eq('uid', uid);
+            if(error) throw error;
+          }catch(err){ alert('Delete failed: ' + err.message); }
+        });
+        liDelAll.appendChild(btnDelAll);
+        ul.appendChild(liDelAll);
+      }
+
+      menu.appendChild(ul);
+      menuWrap.appendChild(btn);
+      menuWrap.appendChild(menu);
+      actions.appendChild(menuWrap);
+
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        closeAllMenus();
+        menu.classList.add('open');
+      });
+      document.addEventListener('click', ()=>{
+        menu.classList.remove('open');
+      });
+
+      stack.appendChild(bubble);
+      stack.appendChild(meta);
+      stack.appendChild(actions);
+
+      wrap.appendChild(avatar);
+      wrap.appendChild(stack);
       els.messages.appendChild(wrap);
+
+      if(hidden) wrap.style.display='none';
+    }
+
+    function updateMessageDom({id, text, username, uid:author, at}){
+      const wrap = els.messages.querySelector(`.msg[data-id="${cssEscape(id)}"]`);
+      if(!wrap) { // if not found, append
+        appendMessage({ id, text, username, uid: author, at });
+        return;
+      }
+      const bubble = wrap.querySelector('.bubble');
+      const meta = wrap.querySelector('.meta');
+      if(bubble){
+        bubble.textContent = text ?? '';
+        bubble.classList.toggle('deleted', text === DELETED_SENTINEL);
+      }
+      if(meta){
+        meta.textContent = `${username || 'unknown'} • ${fmtTime(at)}`;
+      }
     }
 
     function fmtTime(d){ try{ return new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(d); }catch{ return '' } }
+    function cssEscape(s){ return String(s).replace(/["\\]/g, '\\$&'); }
+    function closeAllMenus(){ document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')); }
 
     // Send message
     els.form.addEventListener('submit', async (e)=>{
