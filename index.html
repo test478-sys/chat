@@ -30,11 +30,11 @@
 
     #messages{ flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth }
     .msg{ display:flex; gap:10px; align-items:flex-end; max-width:86% }
-    .msg.me{ margin-left:auto; flex-direction:row-reverse }
+    .msg.me{ margin-left:auto; flex-direction:row-reverse }   /* My messages on the right */
     .bubble{ padding:10px 12px; background:#0b1220; border:1px solid #223049; border-radius:14px; white-space:pre-wrap; word-break:break-word; position:relative }
-    .bubble.deleted{ font-style:italic; opacity:.7 }
     .msg.me .bubble{ background:var(--me); border-color:#1e40af; color:#fff }
-    .meta{ font-size:11px; color:var(--muted); margin-top:4px }
+    .bubble.deleted{ font-style:italic; opacity:.8 }
+    .meta{ font-size:11px; color:#94a3b8; margin-top:4px }
     .msg.me .meta{ text-align:right }
     .avatar{ width:30px; height:30px; border-radius:50%; background:#0b1220; border:1px solid #223049; display:grid; place-items:center; font-weight:700; color:#d1fae5 }
     .msg.me .avatar{ background:#dbeafe; color:#1e3a8a; border-color:#93c5fd }
@@ -44,7 +44,7 @@
     .menuWrap{ position:relative; }
     .menuBtn{ background:transparent; border:0; color:#9ca3af; cursor:pointer; padding:4px; border-radius:8px }
     .menuBtn:hover{ background:#111827; color:#e5e7eb }
-    .menu{ position:absolute; right:0; bottom:26px; display:none; background:#0b1220; border:1px solid #223049; border-radius:10px; min-width:180px; box-shadow:0 14px 40px rgba(0,0,0,.4); z-index:10 }
+    .menu{ position:absolute; right:0; bottom:26px; display:none; background:#0b1220; border:1px solid #223049; border-radius:10px; min-width:190px; box-shadow:0 14px 40px rgba(0,0,0,.4); z-index:10 }
     .menu.open{ display:block }
     .menu ul{ list-style:none; margin:0; padding:6px }
     .menu li button{ all:unset; display:block; width:100%; text-align:left; padding:8px 10px; border-radius:8px; cursor:pointer; color:#e5e7eb; font-size:13px }
@@ -52,7 +52,7 @@
     .sep{ height:1px; margin:6px 0; background:#1f2937 }
 
     form{ display:flex; gap:10px; padding:12px; border-top:1px solid #1f2937; background:rgba(255,255,255,.03) }
-    input[type=text]{ flex:1; padding:14px 12px; border-radius:12px; background:#0b1220; color:var(--ink); border:1px solid #223049 }
+    input[type=text]{ flex:1; padding:14px 12px; border-radius:12px; background:#0b1220; color:#e5e7eb; border:1px solid #223049 }
     input[type=text]::placeholder{ color:#6b7280 }
     button.send{ padding:12px 16px; border-radius:12px; background:var(--brand); color:#fff; border:0; font-weight:800; cursor:pointer }
     button.send:disabled{ opacity:.5; cursor:not-allowed }
@@ -92,6 +92,7 @@
         </div>
       </div>
     </header>
+
     <div id="roomBar">Room: <code id="roomName">general</code></div>
 
     <div id="onlinePanel" role="dialog" aria-modal="false">
@@ -108,6 +109,7 @@
 
     <div class="foot">Powered by Supabase.</div>
   </div>
+
   <div class="toast" id="toast"><span id="toastMsg">Saved your new name.</span> <button id="toastUndo" style="display:none">Undo</button></div>
 
   <script type="module">
@@ -141,21 +143,22 @@
       onlineCount: document.getElementById('onlineCount')
     };
 
-    // IDs & username
+    // Identity & prefs
     const uidKey = 'minichat_uid';
     const nameKey = 'minichat_name';
     const notifyKey = 'minichat_notify';
-    const hiddenKey = `minichat_hidden_${room}`; // store message IDs hidden "for me" in this room
+    const hiddenKey = `minichat_hidden_${room}`;
 
     function nanoId(){return crypto.getRandomValues(new Uint8Array(8)).reduce((a,b)=>a+('0'+b.toString(16)).slice(-2),'')}
     let uid = localStorage.getItem(uidKey) || (()=>{const v=nanoId(); localStorage.setItem(uidKey,v); return v;})();
-
     let name = (localStorage.getItem(nameKey) || '').trim();
+
     async function askName(initial=false){
       const prev = name || '';
       const next = (prompt('Pick a username (2–24 chars):', prev) || '').trim();
       if(next && next.length>=2 && next.length<=24){
-        name = next; localStorage.setItem(nameKey, name); els.userLbl.textContent = name; if(!initial){ toast('Saved your new name.'); trackPresence(); }
+        name = next; localStorage.setItem(nameKey, name); els.userLbl.textContent = name;
+        if(!initial){ toast('Saved your new name.'); trackPresence(); refreshOwnNameInHistory(); }
       } else if(initial && !prev){
         name = 'Guest-' + uid.slice(-4); localStorage.setItem(nameKey, name); els.userLbl.textContent = name;
       }
@@ -164,14 +167,12 @@
     els.editName.addEventListener('click', ()=>askName(false));
     els.userLbl.textContent = name;
 
-    // Hidden "for me" storage
-    const getHiddenSet = () => {
-      try { return new Set(JSON.parse(localStorage.getItem(hiddenKey)||'[]')); } catch { return new Set(); }
-    };
+    // Local "delete for me" store
+    const getHiddenSet = () => { try { return new Set(JSON.parse(localStorage.getItem(hiddenKey)||'[]')); } catch { return new Set(); } };
     const addHidden = (id) => { const s=getHiddenSet(); s.add(id); localStorage.setItem(hiddenKey, JSON.stringify([...s])); };
     const removeHidden = (id) => { const s=getHiddenSet(); s.delete(id); localStorage.setItem(hiddenKey, JSON.stringify([...s])); };
 
-    // Toast / Undo helper
+    // Toast / Undo
     let toastTimer = null, lastHiddenUndoId = null;
     function toast(msg, {undoId=null, ttl=1800}={}){
       els.toastMsg.textContent = msg;
@@ -189,7 +190,7 @@
       els.toast.style.display='none'; els.toastUndo.style.display='none'; lastHiddenUndoId=null;
     });
 
-    // Notifications (with toggle)
+    // Notifications
     const supportsNotif = 'Notification' in window;
     function syncNotifyUI(){
       const on = localStorage.getItem(notifyKey) === 'on';
@@ -211,77 +212,82 @@
           alert('Notifications are blocked in your browser settings.');
           els.notifyChk.checked = false; syncNotifyUI(); return;
         }
-        localStorage.setItem(notifyKey, 'on');
-        syncNotifyUI();
+        localStorage.setItem(notifyKey, 'on'); syncNotifyUI();
         try{ const n = new Notification('Whatsapp (Raymond Edition) notifications on', { body: `Room #${room}` }); n.onclick = ()=>{ window.focus(); n.close(); }; }catch{}
       } else {
-        localStorage.setItem(notifyKey, 'off');
-        syncNotifyUI();
-        toast('Notifications off');
+        localStorage.setItem(notifyKey, 'off'); syncNotifyUI(); toast('Notifications off');
       }
     });
 
-    // ONLINE PRESENCE
+    // Presence
     const presence = supabase.channel('presence:'+room, { config: { presence: { key: uid } } });
     function renderPresence(){
       const state = presence.presenceState();
       const users = Object.entries(state).map(([_, metas]) => metas[0]).filter(Boolean);
       users.sort((a,b)=> (a.uid===uid?-1:b.uid===uid?1: (a.username||'').localeCompare(b.username||'')));
       els.onlineCount.textContent = users.length;
-      els.onlineList.innerHTML = users.map(u => `
+      document.getElementById('onlineList').innerHTML = users.map(u => `
         <li><span class="dot"></span><span>${escapeHtml(u.username||'unknown')}</span>${u.uid===uid?'<span class="meTag">you</span>':''}</li>
       `).join('');
     }
-    function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
-    async function trackPresence(){
-      try{
-        await presence.track({ uid, username: name || ('Guest-'+uid.slice(-4)), room, online_at: new Date().toISOString() });
-      }catch{}
-    }
+    function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;","&gt;":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+    async function trackPresence(){ try{ await presence.track({ uid, username: name || ('Guest-'+uid.slice(-4)), room, online_at: new Date().toISOString() }); }catch{} }
     presence.on('presence', { event: 'sync'  }, renderPresence)
             .on('presence', { event: 'join'  }, renderPresence)
             .on('presence', { event: 'leave' }, renderPresence);
     await presence.subscribe((status) => { if(status === 'SUBSCRIBED') trackPresence(); });
 
-    // Toggle online panel
-    els.onlineBtn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      const on = els.onlinePanel.style.display === 'block';
-      els.onlinePanel.style.display = on ? 'none' : 'block';
-      if(!on) renderPresence();
-    });
-    document.addEventListener('click', (e)=>{
-      if(!els.onlinePanel.contains(e.target) && e.target !== els.onlineBtn){ els.onlinePanel.style.display='none'; }
-    });
-    window.addEventListener('storage', (e)=>{ if(e.key===nameKey){ name = e.newValue; trackPresence(); } });
+    const onlineBtn = document.getElementById('onlineBtn');
+    const onlinePanel = document.getElementById('onlinePanel');
+    onlineBtn.addEventListener('click', (e)=>{ e.stopPropagation(); const on = onlinePanel.style.display === 'block'; onlinePanel.style.display = on ? 'none' : 'block'; if(!on) renderPresence(); });
+    document.addEventListener('click', (e)=>{ if(!onlinePanel.contains(e.target) && e.target !== onlineBtn){ onlinePanel.style.display='none'; } });
+    window.addEventListener('storage', (e)=>{ if(e.key===nameKey){ name = e.newValue; trackPresence(); refreshOwnNameInHistory(); } });
     setInterval(()=>{ trackPresence(); }, 30_000);
 
-    // ---- Initial load ----
-    const DELETED_SENTINEL = '🚫 This message was deleted';
+    // ---- Data load ----
+    const DELETED_SENTINEL = '__WRE_DELETED__';  // stored in DB; UI shows friendly text
+
+    // Try to select updated_at if you have it
     async function loadInitial(){
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('messages')
-        .select('id, text, username, uid, created_at')
+        .select('id, text, username, uid, room, created_at, updated_at')
         .eq('room', room)
         .order('created_at', { ascending: true })
         .limit(500);
+
+      // fallback if updated_at column doesn’t exist
+      if(error && /column .*updated_at/i.test(error.message)){
+        ({ data, error } = await supabase
+          .from('messages')
+          .select('id, text, username, uid, room, created_at')
+          .eq('room', room)
+          .order('created_at', { ascending: true })
+          .limit(500));
+      }
       if(error){ alert('Load failed: '+ error.message); return; }
+
       els.messages.innerHTML = '';
       for(const m of (data || [])){
-        appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
+        appendMessage({
+          id: m.id, text: m.text, username: m.username, author: m.uid,
+          at: new Date(m.created_at),
+          uat: m.updated_at ? new Date(m.updated_at) : null
+        });
       }
       els.messages.scrollTop = els.messages.scrollHeight + 9999;
       els.messages.setAttribute('aria-busy','false');
     }
     await loadInitial();
 
-    // ---- Realtime: INSERT & UPDATE ----
+    // ---- Realtime ----
     const channel = supabase
       .channel('room:'+room)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room=eq.${room}` }, (payload) => {
         const m = payload.new;
-        appendMessage({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
+        appendMessage({ id: m.id, text: m.text, username: m.username, author: m.uid, at: new Date(m.created_at), uat: m.updated_at?new Date(m.updated_at):null });
         els.messages.scrollTop = els.messages.scrollHeight + 9999;
+
         if(localStorage.getItem(notifyKey)==='on' && 'Notification' in window && Notification.permission==='granted' && m.uid !== uid && (!document.hasFocus() || document.visibilityState==='hidden')){
           try{
             const n = new Notification(`${m.username} — #${room}`, { body: (m.text||'').slice(0,120), tag:`wre-${room}`, renotify:true });
@@ -291,17 +297,20 @@
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `room=eq.${room}` }, (payload) => {
         const m = payload.new;
-        updateMessageDom({ id: m.id, text: m.text, username: m.username, uid: m.uid, at: new Date(m.created_at) });
+        updateMessageDom({ id: m.id, text: m.text, username: m.username, author: m.uid, at: new Date(m.created_at), uat: m.updated_at?new Date(m.updated_at):null });
       })
       .subscribe();
 
     // ---- DOM helpers ----
-    function appendMessage({id, text, username, uid:author, at}){
-      const mine = author === uid;
+    function appendMessage({id, text, username, author, at, uat}){
+      const mine = (author === uid);
       const hidden = getHiddenSet().has(id);
+
       const wrap = document.createElement('div');
       wrap.className = 'msg' + (mine ? ' me' : '');
       wrap.dataset.id = id;
+      wrap.dataset.uid = author;
+      wrap.dataset.createdAt = at.toISOString();
 
       const avatar = document.createElement('div');
       avatar.className = 'avatar';
@@ -311,30 +320,24 @@
       stack.style.maxWidth = '100%';
 
       const bubble = document.createElement('div');
-      bubble.className = 'bubble' + (text === DELETED_SENTINEL ? ' deleted' : '');
-      bubble.textContent = text ?? '';
+      bubble.className = 'bubble';
+      const isDeleted = text === DELETED_SENTINEL;
+      bubble.classList.toggle('deleted', isDeleted);
+      bubble.textContent = isDeleted ? (mine ? 'You deleted this message' : 'This message was deleted') : (text ?? '');
 
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = `${username || 'unknown'} • ${fmtTime(at)}`;
+      meta.textContent = buildMeta(username, at, uat, !isDeleted);
 
-      // Actions row (⋯ menu)
+      // Actions (⋯)
       const actions = document.createElement('div');
       actions.className = 'actions';
-      const menuWrap = document.createElement('div');
-      menuWrap.className = 'menuWrap';
-
-      const btn = document.createElement('button');
-      btn.className = 'menuBtn';
-      btn.title = 'More';
-      btn.setAttribute('aria-haspopup', 'menu');
-      btn.textContent = '⋯';
-
-      const menu = document.createElement('div');
-      menu.className = 'menu';
+      const menuWrap = document.createElement('div'); menuWrap.className = 'menuWrap';
+      const btn = document.createElement('button'); btn.className = 'menuBtn'; btn.title = 'More'; btn.setAttribute('aria-haspopup','menu'); btn.textContent='⋯';
+      const menu = document.createElement('div'); menu.className = 'menu';
       const ul = document.createElement('ul');
 
-      // Delete for me (always)
+      // Delete for me (any message)
       const liHide = document.createElement('li');
       const btnHide = document.createElement('button');
       btnHide.textContent = 'Delete for me';
@@ -344,32 +347,26 @@
         wrap.style.display='none';
         toast('Message hidden', { undoId: id, ttl: 4500 });
       });
-      liHide.appendChild(btnHide);
-      ul.appendChild(liHide);
+      liHide.appendChild(btnHide); ul.appendChild(liHide);
 
-      // Author-only actions
-      if(mine && text !== DELETED_SENTINEL){
+      // Author-only actions (Edit / Delete for everyone)
+      if(mine && !isDeleted){
         const liEdit = document.createElement('li');
         const btnEdit = document.createElement('button');
-        btnEdit.textContent = 'Edit message';
+        btnEdit.textContent = 'Edit';
         btnEdit.addEventListener('click', async ()=>{
           menu.classList.remove('open');
+          const createdMs = Date.parse(wrap.dataset.createdAt);
+          const within15 = (Date.now() - createdMs) <= 15*60*1000;
+          if(!within15){ alert('You can only edit within 15 minutes.'); return; }
           const current = bubble.textContent || '';
           const next = (prompt('Edit your message:', current) ?? '').trim();
           if(!next || next === current) return;
-          try{
-            const { error } = await supabase.from('messages')
-              .update({ text: next })
-              .eq('id', id)
-              .eq('uid', uid);
-            if(error) throw error;
-          }catch(err){ alert('Edit failed: ' + err.message); }
+          try{ await editMessage(id, next); }catch(err){ alert('Edit failed: ' + (err.message||err)); }
         });
-        liEdit.appendChild(btnEdit);
-        ul.appendChild(liEdit);
+        liEdit.appendChild(btnEdit); ul.appendChild(liEdit);
 
-        const sep = document.createElement('div'); sep.className = 'sep';
-        ul.appendChild(sep);
+        const sep = document.createElement('div'); sep.className='sep'; ul.appendChild(sep);
 
         const liDelAll = document.createElement('li');
         const btnDelAll = document.createElement('button');
@@ -377,17 +374,9 @@
         btnDelAll.addEventListener('click', async ()=>{
           menu.classList.remove('open');
           if(!confirm('Delete this message for everyone?')) return;
-          try{
-            // No DB schema change required: replace with sentinel text
-            const { error } = await supabase.from('messages')
-              .update({ text: DELETED_SENTINEL })
-              .eq('id', id)
-              .eq('uid', uid);
-            if(error) throw error;
-          }catch(err){ alert('Delete failed: ' + err.message); }
+          try{ await deleteForEveryone(id); }catch(err){ alert('Delete failed: ' + (err.message||err)); }
         });
-        liDelAll.appendChild(btnDelAll);
-        ul.appendChild(liDelAll);
+        liDelAll.appendChild(btnDelAll); ul.appendChild(liDelAll);
       }
 
       menu.appendChild(ul);
@@ -395,14 +384,8 @@
       menuWrap.appendChild(menu);
       actions.appendChild(menuWrap);
 
-      btn.addEventListener('click', (e)=>{
-        e.stopPropagation();
-        closeAllMenus();
-        menu.classList.add('open');
-      });
-      document.addEventListener('click', ()=>{
-        menu.classList.remove('open');
-      });
+      btn.addEventListener('click', (e)=>{ e.stopPropagation(); closeAllMenus(); menu.classList.add('open'); });
+      document.addEventListener('click', ()=>{ menu.classList.remove('open'); });
 
       stack.appendChild(bubble);
       stack.appendChild(meta);
@@ -415,26 +398,69 @@
       if(hidden) wrap.style.display='none';
     }
 
-    function updateMessageDom({id, text, username, uid:author, at}){
+    function updateMessageDom({id, text, username, author, at, uat}){
       const wrap = els.messages.querySelector(`.msg[data-id="${cssEscape(id)}"]`);
-      if(!wrap) { // if not found, append
-        appendMessage({ id, text, username, uid: author, at });
-        return;
-      }
+      if(!wrap){ appendMessage({ id, text, username, author, at, uat }); return; }
+
+      const mine = (wrap.dataset.uid === uid);
+      wrap.classList.toggle('me', mine);
+
       const bubble = wrap.querySelector('.bubble');
       const meta = wrap.querySelector('.meta');
+      const isDeleted = (text === DELETED_SENTINEL);
+
       if(bubble){
-        bubble.textContent = text ?? '';
-        bubble.classList.toggle('deleted', text === DELETED_SENTINEL);
+        bubble.classList.toggle('deleted', isDeleted);
+        bubble.textContent = isDeleted ? (mine ? 'You deleted this message' : 'This message was deleted') : (text ?? '');
       }
-      if(meta){
-        meta.textContent = `${username || 'unknown'} • ${fmtTime(at)}`;
-      }
+      if(meta){ meta.textContent = buildMeta(username, at, uat, !isDeleted); }
     }
 
-    function fmtTime(d){ try{ return new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(d); }catch{ return '' } }
-    function cssEscape(s){ return String(s).replace(/["\\]/g, '\\$&'); }
-    function closeAllMenus(){ document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')); }
+    function buildMeta(username, at, uat, showEdited){
+      const time = fmtTime(at);
+      const edited = (uat && +uat > +at) ? ' (edited)' : ''; // DB has updated_at
+      return `${username || 'unknown'} • ${time}${showEdited ? edited : ''}`;
+    }
+
+    function refreshOwnNameInHistory(){
+      document.querySelectorAll(`.msg[data-uid="${cssEscape(uid)}"] .meta`).forEach(meta=>{
+        // Replace the name before the dot
+        meta.textContent = meta.textContent.replace(/^[^•]+/, name || 'unknown');
+      });
+      // Also refresh avatars for own past messages
+      document.querySelectorAll(`.msg[data-uid="${cssEscape(uid)}"] .avatar`).forEach(av=>{
+        av.textContent = (name||'?').slice(0,2).toUpperCase();
+      });
+    }
+
+    // RPC-backed edit/delete with fallback to direct update (works if your RLS permits uid match)
+    async function editMessage(id, nextText){
+      // Try direct
+      let { error } = await supabase.from('messages').update({ text: nextText }).eq('id', id).eq('uid', uid);
+      if(error){
+        // Try RPC (create these on DB if you use strict RLS; see note below)
+        ({ error } = await supabase.rpc('wre_edit_message', { p_id: String(id), p_uid: uid, p_text: nextText }));
+      }
+      if(error) throw error;
+      // If no updated_at, still show edited immediately
+      markEditedLocally(id);
+    }
+
+    async function deleteForEveryone(id){
+      let { error } = await supabase.from('messages').update({ text: DELETED_SENTINEL }).eq('id', id).eq('uid', uid);
+      if(error){
+        ({ error } = await supabase.rpc('wre_mark_deleted', { p_id: String(id), p_uid: uid, p_text: DELETED_SENTINEL }));
+      }
+      if(error) throw error;
+    }
+
+    function markEditedLocally(id){
+      const wrap = els.messages.querySelector(`.msg[data-id="${cssEscape(id)}"]`);
+      if(!wrap) return;
+      const meta = wrap.querySelector('.meta');
+      if(!meta) return;
+      if(!/\(edited\)\s*$/.test(meta.textContent)) meta.textContent += ' (edited)';
+    }
 
     // Send message
     els.form.addEventListener('submit', async (e)=>{
@@ -459,6 +485,11 @@
 
     // Auto-scroll on focus
     addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ els.messages.scrollTop = els.messages.scrollHeight + 9999; } });
+
+    // Utils
+    function fmtTime(d){ try{ return new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(d); }catch{ return '' } }
+    function cssEscape(s){ return String(s).replace(/["\\]/g, '\\$&'); }
+    function closeAllMenus(){ document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')); }
   </script>
 </body>
 </html>
