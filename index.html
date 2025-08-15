@@ -129,7 +129,7 @@
 
   <script type="module">
     // --- Version & Config ---
-    const APP_VERSION = 'v0.9.0'; // ⬅️ set your version here (e.g., v2025.08.15a)
+    const APP_VERSION = 'v0.9.1'; // bumped version
     const SUPABASE_URL = "https://hlamttqxuifqlnfamkvw.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsYW10dHF4dWlmcWxuZmFta3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDE2ODEsImV4cCI6MjA3MDcxNzY4MX0.4pLNZkGDYVjRBNudJ0OtszQC9fdvcHD1kgHB8W0bNJg";
 
@@ -449,22 +449,58 @@
       });
     }
 
-    // RPC-backed edit/delete with fallback
+    // --- RPC-first edit/delete (with fallback if RLS is open) ---
     async function editMessage(id, nextText){
-      let { error } = await supabase.from('messages').update({ text: nextText }).eq('id', id).eq('uid', uid);
-      if(error){
-        ({ error } = await supabase.rpc('wre_edit_message', { p_id: String(id), p_uid: uid, p_text: nextText }));
+      // Try RPC first (recommended with RLS)
+      let { error } = await supabase.rpc('wre_edit_message', {
+        p_id: String(id),
+        p_uid: uid,
+        p_text: nextText
+      });
+
+      // Fallback to direct update if RPC not installed / you opened RLS
+      if (error) {
+        const resp = await supabase
+          .from('messages')
+          .update({ text: nextText })
+          .eq('id', id)
+          .eq('uid', uid);
+        error = resp.error;
       }
-      if(error) throw error;
+
+      if (error) {
+        console.error('Edit failed:', error);
+        alert('Edit failed. Did you run the SQL to install wre_edit_message?');
+        throw error;
+      }
+
+      // If no updated_at trigger, still show "(edited)"
       markEditedLocally(id);
     }
 
     async function deleteForEveryone(id){
-      let { error } = await supabase.from('messages').update({ text: DELETED_SENTINEL }).eq('id', id).eq('uid', uid);
-      if(error){
-        ({ error } = await supabase.rpc('wre_mark_deleted', { p_id: String(id), p_uid: uid, p_text: DELETED_SENTINEL }));
+      // RPC first (fix for RLS)
+      let { error } = await supabase.rpc('wre_mark_deleted', {
+        p_id: String(id),
+        p_uid: uid,
+        p_text: DELETED_SENTINEL
+      });
+
+      // Fallback to direct update if RPC not installed / RLS loosened
+      if (error) {
+        const resp = await supabase
+          .from('messages')
+          .update({ text: DELETED_SENTINEL })
+          .eq('id', id)
+          .eq('uid', uid);
+        error = resp.error;
       }
-      if(error) throw error;
+
+      if (error) {
+        console.error('Delete for everyone failed:', error);
+        alert('Delete for everyone failed. Did you run the SQL to install wre_mark_deleted?');
+        throw error;
+      }
     }
 
     function markEditedLocally(id){
